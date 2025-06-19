@@ -1,9 +1,10 @@
+import os
 import json
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-from telegram import Update, ForceReply
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -12,6 +13,9 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
+
+# Pega o token do Telegram da variável de ambiente
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # Habilita logs para debug
 logging.basicConfig(
@@ -49,28 +53,6 @@ def salvar_dados(dados):
 
 # =============== DADOS GLOBAIS EM MEMÓRIA ===============
 dados = carregar_dados()
-# Estrutura de dados:
-# dados = {
-#   "perfil": "Solo" ou "Casal" ou "Família",
-#   "nomes": ["Bruno", "Camila"],
-#   "apelido": "Família Silva",
-#   "rendas": {"Bruno": 3500, "Camila": 2500},
-#   "fixos": {"Luz": 170, "Água": 90, "Internet": 120, "Academia": 100, "Streaming": {"Netflix": 39.9, "Prime": 14.9}},
-#   "gastos": {
-#       "2025-06-18": {
-#          "Bruno": [{"categoria":"Mercado", "valor":50}, ...],
-#          "Camila": [...],
-#       },
-#       ...
-#    },
-#   "emprestimos": [
-#       {"devedor":"Maria", "credor":"João", "valor":500, "saldo":500},
-#       ...
-#   ],
-#   "bonificacoes": [
-#       {"beneficiario":"João", "valor":50, "motivo":"pagou antes do prazo"}
-#   ]
-# }
 
 # =================== HELPERS =====================
 
@@ -101,7 +83,6 @@ def verifica_perfil_valido():
 # =================== HANDLERS =====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Inicia cadastro se não tiver dados
     if verifica_perfil_valido():
         await update.message.reply_text(
             f"Olá {dados.get('apelido', '')}! Seu assistente financeiro está pronto. "
@@ -117,7 +98,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return STATE_CADASTRO_TIPO
 
-# --- Cadastro: Tipo do perfil ---
 async def cadastro_tipo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip().lower()
     if texto not in ["solo", "casal", "família", "familia"]:
@@ -137,7 +117,6 @@ async def cadastro_tipo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return STATE_CADASTRO_NOMES
 
-# --- Cadastro: Nomes ---
 async def cadastro_nomes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
     nomes = [nome.strip() for nome in texto.split(",") if nome.strip()]
@@ -154,7 +133,6 @@ async def cadastro_nomes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return STATE_CADASTRO_APELIDO
 
-# --- Cadastro: Apelido ---
 async def cadastro_apelido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
     if not texto:
@@ -170,7 +148,6 @@ async def cadastro_apelido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return STATE_CADASTRO_RENDAS
 
-# --- Cadastro: Rendas ---
 async def cadastro_rendas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
     linhas = texto.split("\n")
@@ -210,12 +187,10 @@ async def cadastro_rendas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return STATE_CADASTRO_FIXOS
 
-# --- Cadastro: Gastos fixos ---
 async def cadastro_fixos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
 
     fixos = dados.get("fixos", {})
-    # Parsing simples de linhas que contenham ':' para chave e valor, streaming separado
     linhas = texto.split("\n")
     for linha in linhas:
         if ":" not in linha:
@@ -223,13 +198,10 @@ async def cadastro_fixos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chave, valor = linha.split(":", 1)
         chave = chave.strip()
         valor = valor.strip()
-        # Streaming especial
         if chave.lower() == "streaming":
-            # Exemplo: Netflix (39,90), Prime Video (14,90)
             streaming_ = {}
             partes = valor.split(",")
             for parte in partes:
-                # tenta extrair nome e valor
                 if "(" in parte and ")" in parte:
                     nome_stream = parte.split("(")[0].strip()
                     valor_stream = parte.split("(")[1].replace(")", "").replace("R$", "").replace(",", ".").strip()
@@ -240,7 +212,6 @@ async def cadastro_fixos(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         continue
             fixos["Streaming"] = streaming_
         else:
-            # valor numérico
             try:
                 valor_float = float(valor.replace("R$", "").replace(",", "."))
                 fixos[chave] = valor_float
@@ -260,7 +231,6 @@ async def cadastro_fixos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# --- Comando /ajuda ---
 async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "Comandos disponíveis:\n"
@@ -274,7 +244,6 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(texto)
 
-# --- Registrar gasto via comando simplificado ---
 async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 3:
@@ -308,7 +277,6 @@ async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Gasto registrado: {nome} gastou {formata_reais(valor)} com {categoria} hoje."
     )
 
-# --- Relatório diário ---
 async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_hoje = hoje_str()
     texto = f"🧾 Relatório do dia – {data_hoje}\n\n"
@@ -333,10 +301,9 @@ async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(texto)
 
-# --- Relatório semanal ---
 async def relatorio_semanal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hoje = datetime.now()
-    inicio_semana = hoje - timedelta(days=hoje.weekday())  # segunda-feira
+    inicio_semana = hoje - timedelta(days=hoje.weekday())
 
     perfil = dados.get("perfil", "Solo")
     apelido = dados.get("apelido", "")
@@ -364,45 +331,4 @@ async def relatorio_semanal(update: Update, context: ContextTypes.DEFAULT_TYPE):
             texto += f"👤 {nome}: {formata_reais(totais_pessoas[nome])}\n"
         texto += f"\n💵 Total: {formata_reais(total_geral)}\n"
 
-    texto += "\nPara ver o relatório mensal, digite /relatorio_mensal"
-
-    await update.message.reply_text(texto)
-
-# --- Relatório mensal ---
-async def relatorio_mensal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    hoje = datetime.now()
-    mes_ano = hoje.strftime("%m-%Y")
-    perfil = dados.get("perfil", "Solo")
-    apelido = dados.get("apelido", "")
-
-    total_geral = 0
-    totais_pessoas = defaultdict(float)
-
-    texto = f"📆 Relatório Mensal – {hoje.strftime('%B')}\n"
-    texto += f"📛 Grupo: {apelido}\n\n" if perfil != "Solo" else ""
-
-    for dia_str, gastos_dia in dados.get("gastos", {}).items():
-        if dia_str.startswith(f"{hoje.year}-{hoje.month:02d}"):
-            for nome in dados.get("nomes", []):
-                totais_pessoas[nome] += soma_gastos_por_pessoa(gastos_dia, nome)
-                total_geral += soma_gastos_por_pessoa(gastos_dia, nome)
-
-    if perfil == "Solo":
-        nome = dados.get("nomes", [None])[0]
-        total = totais_pessoas[nome]
-        texto += f"No mês de {hoje.strftime('%B')}, você gastou um total de {formata_reais(total)}.\n"
-    else:
-        texto += "Gastos do mês por pessoa:\n\n"
-        for nome in dados.get("nomes", []):
-            texto += f"👤 {nome}: {formata_reais(totais_pessoas[nome])}\n"
-        texto += f"\n💵 Total: {formata_reais(total_geral)}\n"
-
-    texto += "\nPara ver relatório diário, digite /relatorio"
-
-    await update.message.reply_text(texto)
-
-# --- Sistema de empréstimos e bonificações ---
-
-async def emprestimos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    perfil = dados.get("perfil", "Solo")
-    if
+    texto += "\nPara ver o relatório mensal, digite /relatorio
