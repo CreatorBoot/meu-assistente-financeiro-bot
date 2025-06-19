@@ -216,8 +216,8 @@ async def relatorio_mensal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for data, gastos_dia in dados.get("gastos", {}).items():
         if data.startswith(hoje.strftime("%Y-%m")):
             for nome in dados.get("nomes", []):
-                totais[nome] += soma_gastos_por_pessoa(gastos_dia.get(nome, []))
-                total_geral += soma_gastos_por_pessoa(gastos_dia.get(nome, []))
+                totais[nome] += soma_gastos_por_pessoa(gastos_dia, nome)
+                total_geral += soma_gastos_por_pessoa(gastos_dia, nome)
     for nome in dados.get("nomes", []):
         texto += f"👤 {nome}: {formata_reais(totais[nome])}\n"
     texto += f"\n💰 Total: {formata_reais(total_geral)}"
@@ -236,7 +236,7 @@ if __name__ == "__main__":
             STATE_CADASTRO_RENDAS: [MessageHandler(filters.TEXT & ~filters.COMMAND, cadastro_rendas)],
             STATE_CADASTRO_FIXOS: [MessageHandler(filters.TEXT & ~filters.COMMAND, cadastro_fixos)],
         },
-        fallbacks=[],
+        fallbacks=[CommandHandler("start", start)],
     )
 
     app.add_handler(conversa)
